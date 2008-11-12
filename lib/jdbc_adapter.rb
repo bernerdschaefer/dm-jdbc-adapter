@@ -8,10 +8,26 @@ module DataMapper
 
       def execute(statement, *bind_values)
         with_connection do |connection|
+          metadata = connection.getMetaData
+
           if bind_values.empty?
             stmt = connection.createStatement
-            result = stmt.execute(statement)
+            if metadata.supportsGetGeneratedKeys
+              result = stmt.execute(statement, stmt.class.RETURN_GENERATED_KEYS)
+            else
+              result = stmt.execute(statement)
+            end
+            stmt.close
+          else
+            stmt = connection.prepareStatement(statement)
+            bind_values.each_with_index do |bind_value, i|
+              stmt.setObject(i + 1, ruby_to_jdbc(bind_value))
+            end
+            result = stmt.execute
           end
+
+          result
+
         end
       end
 
@@ -22,13 +38,19 @@ module DataMapper
             stmt = connection.createStatement
             rs = stmt.executeQuery(statement)
           else
+            stmt = connection.prepareStatement(statement)
+            bind_values.each_with_index do |bind_value, i|
+              stmt.setObject(i + 1, ruby_to_jdbc(bind_value))
+            end
+            rs = stmt.executeQuery
           end
+
           metadata = rs.getMetaData
 
           while rs.next do
             hash = {}
             1.upto(metadata.getColumnCount) do |i|
-              hash[metadata.getColumnName(i)] = rs.getObject(i)
+              hash[metadata.getColumnName(i)] = jdbc_to_ruby(rs.getObject(i))
             end
             result << hash
           end
@@ -86,6 +108,20 @@ module DataMapper
           raise e
         ensure
           connection.close if connection
+        end
+      end
+
+      def ruby_to_jdbc(ruby_object)
+        case ruby_object
+        when String, Integer, Float then ruby_object
+        else ruby_object
+        end
+      end
+
+      def jdbc_to_ruby(jdbc_object)
+        case jdbc_object
+        when String, Integer, Float then jdbc_object
+        else raise("Unsupported JDBC Type")
         end
       end
 

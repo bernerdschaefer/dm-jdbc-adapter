@@ -16,7 +16,11 @@ describe "JdbcAdapter" do
     it "should execute a query" do
       @adapter.execute("CREATE TABLE users (id integer primary key, name varchar)")
     end
-  end
+
+    it "should accept bind values" do
+      @adapter.execute("INSERT INTO users (name) VALUES (?)", "John")
+    end
+  end # execute
 
   describe "#query" do
     before(:all) do
@@ -28,5 +32,10 @@ describe "JdbcAdapter" do
       result = @adapter.query("SELECT * FROM users")
       result.first.should == { "id" => 1, "name" => "John" }
     end
-  end
+
+    it "should support bind values" do
+      result = @adapter.query("SELECT * FROM users WHERE id = ?", 1)
+      result.first["id"].should == 1
+    end
+  end # query
 end
