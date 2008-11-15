@@ -7,15 +7,20 @@ module DataMapper
     class JdbcAdapter < AbstractAdapter
 
       def execute(statement, *bind_values)
+
         with_connection do |connection|
+          result = nil
+          success = false
           metadata = connection.getMetaData
 
           if bind_values.empty?
             stmt = connection.createStatement
             if metadata.supportsGetGeneratedKeys
-              result = stmt.execute(statement, stmt.class.RETURN_GENERATED_KEYS)
+              result_set = stmt.execute(statement, 1)
+              result = generated_keys(connection, result_set)
             else
-              result = stmt.execute(statement)
+              stmt.execute(statement)
+              result = generated_keys(connection)
             end
             stmt.close
           else
@@ -23,12 +28,14 @@ module DataMapper
             bind_values.each_with_index do |bind_value, i|
               stmt.setObject(i + 1, ruby_to_jdbc(bind_value))
             end
-            result = stmt.execute
+            stmt.execute
+            stmt.close
+            result = generated_keys(connection)
           end
 
           result
-
         end
+
       end
 
       def query(statement, *bind_values)
@@ -60,7 +67,29 @@ module DataMapper
       end
 
       def create(resources)
-        raise NotImplementedError
+        created = 0
+
+        with_connection do |connection|
+          resources.each do |resource|
+            repository = resource.repository
+            model = resource.model
+            attributes = resource.dirty_attributes
+
+            statement = "INSERT INTO #{model.storage_name(repository.name)} ("
+            statement << attributes.keys.map { |property| property.field(repository.name) } * ", "
+            statement << ") VALUES ("
+            statement << (['?'] * attributes.size) * ", "
+            statement << ")"
+
+            bind_values = attributes.values
+
+            result = execute(statement, *bind_values)
+            created += 1 if result
+
+          end
+        end
+
+        created
       end
 
       def read_many(query)
@@ -88,12 +117,19 @@ module DataMapper
       private
 
       def initialize(name, uri_or_options)
+        require Pathname(__FILE__).dirname + "jdbc_adapter/jdbc_uri"
+
         super
 
         require @uri.gem
 
         # Touch the driver class
         import @uri.driver
+        com.mysql.jdbc.Driver
+
+        # Require and include the DB specific extensions
+        require Pathname(__FILE__).dirname + "jdbc_adapter/adapters/#{@uri.scheme}"
+        self.class.send(:include, self.class.const_get(Extlib::Inflection.classify(@uri.scheme)))
       end
 
       def with_connection(&block)
@@ -104,7 +140,6 @@ module DataMapper
         rescue => e
           DataMapper.logger.error(e)
           puts e
-          puts e.backtrace
           raise e
         ensure
           connection.close if connection
@@ -113,41 +148,21 @@ module DataMapper
 
       def ruby_to_jdbc(ruby_object)
         case ruby_object
-        when String, Integer, Float then ruby_object
+        when String, Integer, Float, nil then ruby_object
         else ruby_object
         end
       end
 
       def jdbc_to_ruby(jdbc_object)
         case jdbc_object
-        when String, Integer, Float then jdbc_object
+        when String, Integer, Float, nil then jdbc_object
         else raise("Unsupported JDBC Type")
         end
       end
 
-      class JdbcUri
-        def initialize(uri)
-          @uri = Addressable::URI.parse(uri.path)
-        end
-
-        def gem
-          case @uri.scheme
-          when "sqlite" then "jdbc/sqlite3"
-          when "mysql"  then "jdbc/mysql"
-          end
-        end
-
-        def driver
-          case @uri.scheme
-          when "sqlite" then "org.sqlite.JDBC"
-          when "mysql"  then "com.mysql.jdbc.Driver"
-          end
-        end
-
-        def to_s
-          "jdbc:#{@uri.to_s}"
-        end
-      end
+      # def generated_keys(connection, result_set = nil)
+      #   raise NotImplementedError
+      # end
 
     end
   end
