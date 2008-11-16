@@ -4,20 +4,29 @@ include DataMapper::Adapters
 
 describe "JdbcAdapter" do
   before(:all) do
+    DataMapper.logger = DataMapper::Logger.new($stdout, :debug)
     case ENV["ADAPTER"]
     when "mysql"
-      # `mysqladmin -uroot create jdbc_test`
+      `mysqladmin -uroot create jdbc_test`
       @adapter = DataMapper.setup(:default, "jdbc:mysql://127.0.0.1:3306/jdbc_test?user=root")
+      @schema = <<-EOS
+      CREATE TABLE users
+        (id integer primary key auto_increment, name varchar(255), age integer, weight float)
+      EOS
     else
       @database = (Pathname(__FILE__).dirname.expand_path + "test.db").to_s
       @adapter = DataMapper.setup(:default, "jdbc:sqlite:#{@database}")
+      @schema = <<-EOS
+      CREATE TABLE users
+        (id integer primary key autoincrement, name varchar(255), age integer, weight float)
+      EOS
     end
   end
 
   after(:all) do
     case ENV["ADAPTER"]
     when "mysql"
-      # `mysqladmin -f -uroot drop jdbc_test`
+      `mysqladmin -f -uroot drop jdbc_test`
     else
       File.unlink(@database)
     end
@@ -25,7 +34,7 @@ describe "JdbcAdapter" do
 
   describe "#execute" do
     it "should execute a query" do
-      @adapter.execute("CREATE TABLE users (id integer primary key auto_increment, name varchar(255))")
+      @adapter.execute(@schema)
     end
 
     it "should accept bind values" do
@@ -33,20 +42,22 @@ describe "JdbcAdapter" do
     end
 
     it "should return generated keys when present" do
-      keys = @adapter.execute("INSERT INTO users (name) VALUES(?)", "John")
-      keys.should == 2
+      key = @adapter.execute("INSERT INTO users (name) VALUES (?)", "John")
+      key.should == 2
     end
   end # execute
 
   describe "#query" do
     before(:all) do
-      @adapter.execute("CREATE TABLE users (id integer primary key auto_increment, name varchar(255))")
+      @adapter.execute(@schema)
       @adapter.execute("INSERT INTO users (name) VALUES ('John')")
     end
 
     it "should return a result set" do
-      result = @adapter.query("SELECT * FROM users")
-      result.first.should == { "id" => 1, "name" => "John" }
+      result = @adapter.query("SELECT * FROM users").first
+      result["id"].should == 1
+      result["name"].should == "John"
+      result["age"].should == nil
     end
 
     it "should support bind values" do
@@ -57,7 +68,7 @@ describe "JdbcAdapter" do
 
   describe "#create" do
     before(:all) do
-      @adapter.execute("CREATE TABLE users (id integer primary key auto_increment, name varchar(255))")
+      @adapter.execute(@schema)
     end
 
     it "should create a record" do

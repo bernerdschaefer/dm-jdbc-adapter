@@ -8,7 +8,7 @@ describe "JdbcAdapter" do
     @adapter = JdbcAdapter.new(:default, Addressable::URI.parse("jdbc:sqlite:#{@database}"))
     @adapter.execute <<-SQL
     CREATE TABLE users
-      (id integer primary key, name varchar, age integer, weight float, created_at timestamp)
+      (id integer primary key autoincrement, name varchar(255), age integer, weight float, created_at timestamp)
     SQL
   end
 

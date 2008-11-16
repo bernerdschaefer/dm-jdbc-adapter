@@ -3,13 +3,16 @@ module DataMapper
     class JdbcAdapter
       module Mysql
 
-        def generated_keys(connection, result_set)
+        def generated_keys(connection, statement = nil)
 
-          puts "HERE?"
+          return nil unless statement
+
+          result_set = statement.getGeneratedKeys
           key = nil
 
-          result_set.next
-          key = jdbc_to_ruby(result_set.getObject(1))
+          while result_set.next
+            key = jdbc_to_ruby(result_set.getObject(1))
+          end
           result_set.close
 
           key == 0 ? nil : key

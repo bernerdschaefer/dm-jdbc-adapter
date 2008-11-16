@@ -13,24 +13,38 @@ module DataMapper
           success = false
           metadata = connection.getMetaData
 
+          # DataMapper.logger.debug(statement + "\n -- " + bind_values.inspect)
+
           if bind_values.empty?
             stmt = connection.createStatement
             if metadata.supportsGetGeneratedKeys
-              result_set = stmt.execute(statement, 1)
-              result = generated_keys(connection, result_set)
+              stmt.executeUpdate(statement)
+              result = generated_keys(connection, stmt)
             else
               stmt.execute(statement)
               result = generated_keys(connection)
             end
             stmt.close
           else
-            stmt = connection.prepareStatement(statement)
+            if metadata.supportsGetGeneratedKeys
+              stmt = connection.prepareStatement(statement, 1)
+            else
+              stmt = connection.prepareStatement(statement)
+            end
+
             bind_values.each_with_index do |bind_value, i|
               stmt.setObject(i + 1, ruby_to_jdbc(bind_value))
             end
+
             stmt.execute
+
+            if metadata.supportsGetGeneratedKeys
+              result = generated_keys(connection, stmt)
+            else
+              result = generated_keys(connection)
+            end
+
             stmt.close
-            result = generated_keys(connection)
           end
 
           result
@@ -125,7 +139,6 @@ module DataMapper
 
         # Touch the driver class
         import @uri.driver
-        com.mysql.jdbc.Driver
 
         # Require and include the DB specific extensions
         require Pathname(__FILE__).dirname + "jdbc_adapter/adapters/#{@uri.scheme}"
@@ -138,7 +151,7 @@ module DataMapper
           connection = java.sql.DriverManager.getConnection(@uri.to_s)
           return yield(connection)
         rescue => e
-          DataMapper.logger.error(e)
+          DataMapper.logger.error(e.to_s)
           puts e
           raise e
         ensure
