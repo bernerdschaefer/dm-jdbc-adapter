@@ -1,7 +1,7 @@
 module DataMapper
   module Adapters
     class JdbcAdapter
-      class JdbcUri
+      class JdbcUri < Addressable::URI
         def initialize(uri)
           @uri = Addressable::URI.parse(uri.path)
         end

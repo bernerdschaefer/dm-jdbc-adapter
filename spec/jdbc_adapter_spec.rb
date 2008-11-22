@@ -4,7 +4,7 @@ include DataMapper::Adapters
 
 describe "JdbcAdapter" do
   before(:all) do
-    DataMapper.logger = DataMapper::Logger.new($stdout, :debug)
+    # DataMapper.logger = DataMapper::Logger.new($stdout, :debug)
     case ENV["ADAPTER"]
     when "mysql"
       `mysqladmin -uroot create jdbc_test`
@@ -88,6 +88,21 @@ describe "JdbcAdapter" do
   
     it "should create a record" do
       @adapter.create([User.new(:name => "John")]).should == 1
+    end
+  end
+
+  describe "#update" do
+    before(:all) do
+      @adapter.execute(@schema)
+    end
+  
+    it "should update a record" do
+      pending
+      user = User.new(:name => "John")
+      user.save
+      user.name = "James"
+      user.save
+      @adapter.query("SELECT name FROM users WHERE id=?", user.id).first["name"].should == "James"
     end
   end
 end
