@@ -83,24 +83,22 @@ module DataMapper
       def create(resources)
         created = 0
 
-        with_connection do |connection|
-          resources.each do |resource|
-            repository = resource.repository
-            model = resource.model
-            attributes = resource.dirty_attributes
+        resources.each do |resource|
+          repository = resource.repository
+          model = resource.model
+          attributes = resource.dirty_attributes
 
-            statement = "INSERT INTO #{model.storage_name(repository.name)} ("
-            statement << attributes.keys.map { |property| property.field(repository.name) } * ", "
-            statement << ") VALUES ("
-            statement << (['?'] * attributes.size) * ", "
-            statement << ")"
+          statement = "INSERT INTO #{quote_identifier(model.storage_name(repository.name))} ("
+          statement << attributes.keys.map { |property| quote_identifier(property.field(repository.name)) } * ", "
+          statement << ") VALUES ("
+          statement << (['?'] * attributes.size) * ", "
+          statement << ")"
 
-            bind_values = attributes.values
+          bind_values = attributes.values
 
-            result = execute(statement, *bind_values)
-            created += 1 if result
+          result = execute(statement, *bind_values)
+          created += 1 if result
 
-          end
         end
 
         created
@@ -173,9 +171,15 @@ module DataMapper
         end
       end
 
-      # def generated_keys(connection, result_set = nil)
-      #   raise NotImplementedError
-      # end
+      def quote_string        
+        @quote_string ||= with_connection { |connection| connection.getMetaData.getIdentifierQuoteString }
+        @quote_string = '"' if @quote_string == " " # sqlite3 returns " " instead of '"'
+        @quote_string
+      end
+
+      def quote_identifier(identifier)
+        identifier.gsub(/([^\.]+)/, "#{self.quote_string}\\1#{self.quote_string}")
+      end
 
     end
   end

@@ -66,11 +66,26 @@ describe "JdbcAdapter" do
     end
   end # query
 
+  describe "#quote_identifier" do
+    before(:all) do
+      @adapter.class.send(:public, :quote_string, :quote_identifier)
+      @quote = @adapter.quote_string
+    end
+
+    it "should quote a table name" do
+      @adapter.quote_identifier("users").should == "#{@quote}users#{@quote}"
+    end
+
+    it "should quote a column name with tablename" do
+      @adapter.quote_identifier("users.name").should == "#{@quote}users#{@quote}.#{@quote}name#{@quote}"
+    end
+  end
+
   describe "#create" do
     before(:all) do
       @adapter.execute(@schema)
     end
-
+  
     it "should create a record" do
       @adapter.create([User.new(:name => "John")]).should == 1
     end
