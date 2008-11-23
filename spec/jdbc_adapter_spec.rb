@@ -85,9 +85,24 @@ describe "JdbcAdapter" do
     before(:all) do
       @adapter.execute(@schema)
     end
-  
+
     it "should create a record" do
       @adapter.create([User.new(:name => "John")]).should == 1
+    end
+  end
+
+  describe "#read_one" do
+    before(:all) do
+      @adapter.execute(@schema)
+      @adapter.create([User.new(:name => "John")]).should == 1
+    end
+
+    it "should return with an empty query" do
+      User.first.name.should == "John"
+    end
+
+    it "should return with a more complicated query" do
+      User.first(:name.not => "James", :id.lt => 450).name.should == "John"
     end
   end
 
@@ -95,7 +110,7 @@ describe "JdbcAdapter" do
     before(:all) do
       @adapter.execute(@schema)
     end
-  
+
     it "should update a record" do
       pending
       user = User.new(:name => "John")

@@ -48,20 +48,23 @@ module DataMapper
 
         end
 
+        def execute_reader(connection, statement, bind_values)
+          if bind_values.empty?
+            stmt = connection.createStatement
+            rs = stmt.executeQuery(statement)
+          else
+            stmt = connection.prepareStatement(statement)
+            bind_values.each_with_index do |bind_value, i|
+              stmt.setObject(i + 1, ruby_to_jdbc(bind_value))
+            end
+            rs = stmt.executeQuery
+          end
+        end
+
         def query(statement, *bind_values)
           with_connection do |connection|
             result = []
-            if bind_values.empty?
-              stmt = connection.createStatement
-              rs = stmt.executeQuery(statement)
-            else
-              stmt = connection.prepareStatement(statement)
-              bind_values.each_with_index do |bind_value, i|
-                stmt.setObject(i + 1, ruby_to_jdbc(bind_value))
-              end
-              rs = stmt.executeQuery
-            end
-
+            rs = execute_reader(connection, statement, bind_values)
             metadata = rs.getMetaData
 
             while rs.next do
@@ -105,7 +108,21 @@ module DataMapper
         end
 
         def read_one(query)
-          raise NotImplementedError
+          statement = "SELECT "
+          statement << query.fields.map { |property| quote_identifier(property.field(query.repository.name)) } * ", "
+          statement << " FROM #{quote_identifier(query.model.storage_name(query.repository.name))}"
+          statement << " WHERE #{conditions_statement(query)}" if query.conditions.any?
+          with_connection do |connection|
+            result_set = execute_reader(connection, statement, query.bind_values)
+            if result_set.next
+              metadata = result_set.getMetaData
+              values = []
+              1.upto(metadata.getColumnCount) do |i|
+                values << jdbc_to_ruby(metadata.getColumnType(i), result_set.getObject(i))
+              end
+              query.model.load(values, query)
+            end
+          end
         end
 
         def update(attributes, query)
@@ -143,6 +160,43 @@ module DataMapper
             raise e
           ensure
             connection.close if connection
+          end
+        end
+
+        def conditions_statement(query)
+          query.conditions.map do |operator, property, bind_value|
+            quote_identifier(property.field(query.repository.name)) + " #{operator_to_sql(operator, bind_value)} ?"
+          end * " AND "
+        end
+
+        def operator_to_sql(operator, value)
+          case operator
+          when :eql, :in then equality_operator(value)
+          when :not      then inequality_operator(value)
+          when :like     then 'LIKE'
+          when :gt       then '>'
+          when :gte      then '>='
+          when :lt       then '<'
+          when :lte      then '<='
+          else raise ArgumentError.new("Invalid Query Operator")
+          end
+        end
+
+        def equality_operator(value)
+          case value
+            when Array, Query then 'IN'
+            when Range        then 'BETWEEN'
+            when NilClass     then 'IS'
+            else                   '='
+          end
+        end
+
+        def inequality_operator(value)
+          case value
+            when Array, Query then 'NOT IN'
+            when Range        then 'NOT BETWEEN'
+            when NilClass     then 'IS NOT'
+            else                   '<>'
           end
         end
 
